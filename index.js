@@ -2,7 +2,6 @@ import express from "express";
 import mongoose from "mongoose";
 import dotenv from "dotenv";
 import cors from "cors";
-import fs from "fs";
 
 import authRoutes from "./routes/authRoutes.js";
 import cartRoutes from "./routes/cartRoutes.js";
@@ -15,9 +14,30 @@ dotenv.config();
 
 const app = express();
 
-app.use(cors());
-app.use(express.json());
+// ==================== CORS CONFIG ====================
+const allowedOrigins = [
+    "http://localhost:5173",           // dev frontend
+    "https://shoe-fe.vercel.app"       // prod frontend
+];
 
+app.use(cors({
+    origin: function (origin, callback) {
+        if (!origin) return callback(null, true); // allow non-browser tools
+        if (allowedOrigins.indexOf(origin) === -1) {
+            const msg = `The CORS policy does not allow access from the origin ${origin}.`;
+            return callback(new Error(msg), false);
+        }
+        return callback(null, true);
+    },
+    methods: ["GET", "POST", "PUT", "DELETE", "OPTIONS"],
+    allowedHeaders: ["Content-Type", "Authorization"],
+    credentials: true
+}));
+
+// ==================== MIDDLEWARE ====================
+app.use(express.json()); // parse JSON requests
+
+// ==================== ROUTES ====================
 app.use("/api/auth", authRoutes);
 app.use("/api/cart", cartRoutes);
 app.use("/api/reviews", reviewRoutes);
@@ -27,18 +47,23 @@ app.use("/api/customer-care", customerCareRoutes);
 
 app.get("/", (req, res) => res.send("API running ✅"));
 
+// ==================== MONGODB CONNECT ====================
+const PORT = process.env.PORT || 5000;
+
 mongoose
-    .connect(process.env.MONGO_URI)
-    .then(() => {
-        app.listen(process.env.PORT || 5000, () =>
-            console.log("🚀 Server started")
-        );
+    .connect(process.env.MONGO_URI, {
+        useNewUrlParser: true,
+        useUnifiedTopology: true
     })
-    .catch(console.error);
+    .then(() => {
+        console.log("✅ MongoDB connected successfully");
+        app.listen(PORT, () => {
+            console.log(`🚀 Server running on http://localhost:${PORT}`);
+        });
+    })
+    .catch(err => {
+        console.error("❌ MongoDB connection error:", err);
+        process.exit(1);
+    });
 
 export default app;
-
-
-
-
-

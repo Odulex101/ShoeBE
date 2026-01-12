@@ -18,5 +18,4 @@ router.put("/:id/status", authMiddleware, adminMiddleware, async (req, res) => {
     );
     res.json(order);
 });
-
 export default router;
