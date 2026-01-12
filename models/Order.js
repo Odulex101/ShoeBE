@@ -1,4 +1,3 @@
-
 // import mongoose from "mongoose";
 
 // const orderSchema = new mongoose.Schema(
@@ -40,6 +39,7 @@ const orderSchema = new mongoose.Schema(
 			fullName: String,
 			address: String,
 			phone: String,
+			pickupStation: String,
 		},
 
 		deliveryDateRange: {
@@ -71,7 +71,3 @@ const orderSchema = new mongoose.Schema(
 );
 
 export default mongoose.model("Order", orderSchema);
-
-
-
-
