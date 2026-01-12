@@ -10,8 +10,6 @@ import reviewRoutes from "./routes/reviewRoutes.js";
 import orderRoutes from "./routes/orderRoutes.js";
 import adminOrderRoutes from "./routes/adminOrderRoutes.js";
 import customerCareRoutes from "./routes/customerCareRoutes.js";
-import adminProductRoutes from "./routes/adminProducts.js";
-
 
 dotenv.config();
 
@@ -26,9 +24,6 @@ app.use("/api/reviews", reviewRoutes);
 app.use("/api/orders", orderRoutes);
 app.use("/api/admin/orders", adminOrderRoutes);
 app.use("/api/customer-care", customerCareRoutes);
-app.use("/api/admin/products", adminProductRoutes);
-
-
 
 app.get("/", (req, res) => res.send("API running ✅"));
 
@@ -42,6 +37,7 @@ mongoose
     .catch(console.error);
 
 export default app;
+
 
 
 

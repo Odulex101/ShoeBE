@@ -8,17 +8,24 @@ const cartSchema = new mongoose.Schema(
             required: true,
             unique: true,
         },
+
         items: [
             {
                 productId: Number,
                 name: String,
                 price: Number,
                 image: String,
-                quantity: { type: Number, default: 1 },
+                quantity: {
+                    type: Number,
+                    default: 1,
+                },
             },
         ],
     },
-    { timestamps: true }
+    {
+        timestamps: true,
+    }
 );
 
 export default mongoose.model("Cart", cartSchema);
+
