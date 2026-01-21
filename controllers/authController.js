@@ -285,15 +285,191 @@ export const checkEmail = async (req, res) => {
 
         const user = await User.findOne({ email });
 
+        // Email not found → frontend will continue signup flow
         if (!user) {
-            return res.status(200).json({ exists: false });
+            return res.json({ exists: false });
         }
 
+        // User exists but not fully set up
         if (!user.verified || !user.passwordSet) {
             return res.status(400).json({
                 exists: false,
                 message: "Complete signup process",
             });
+        }
+
+        // Fully registered user
+        return res.json({ exists: true });
+    } catch (err) {
+        console.error("checkEmail error:", err);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+/* =============================== START REGISTRATION =============================== */
+export const startRegistration = async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        const existing = await User.findOne({ email });
+        if (existing) {
+            return res.status(400).json({ message: "Email already registered" });
+        }
+
+        await User.create({
+            email,
+            verified: false,
+            passwordSet: false,
+        });
+
+        res.status(201).json({ message: "Registration started" });
+    } catch (err) {
+        console.error("startRegistration error:", err);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+/* =============================== SEND OTP =============================== */
+export const sendLoginCode = async (req, res) => {
+    try {
+        const { email } = req.body;
+
+        // Auto-create user if not exists
+        let user = await User.findOne({ email });
+        if (!user) {
+            user = await User.create({
+                email,
+                verified: false,
+                passwordSet: false,
+            });
+        }
+
+        // Already fully verified user should login instead
+        if (user.verified && user.passwordSet) {
+            return res.status(400).json({ message: "Account already verified" });
+        }
+
+        const code = crypto.randomInt(100000, 999999).toString();
+
+        user.verificationCode = code;
+        user.codeExpires = Date.now() + 10 * 60 * 1000; // 10 mins
+        await user.save();
+
+        await transporter.sendMail({
+            from: `"Temorah Login" <${process.env.EMAIL_USER}>`,
+            to: email,
+            subject: "Your verification code",
+            html: `
+                <div style="font-family: Arial, sans-serif;">
+                    <h2>Your verification code</h2>
+                    <h1>${code}</h1>
+                    <p>This code expires in 10 minutes.</p>
+                </div>
+            `,
+        });
+
+        res.json({ message: "Code sent" });
+    } catch (err) {
+        console.error("sendLoginCode error:", err);
+        res.status(500).json({ message: "Failed to send email" });
+    }
+};
+
+/* =============================== VERIFY OTP =============================== */
+export const verifyCode = async (req, res) => {
+    try {
+        const { email, code } = req.body;
+
+        const user = await User.findOne({ email });
+
+        if (
+            !user ||
+            user.verificationCode !== code ||
+            Date.now() > user.codeExpires
+        ) {
+            return res.status(400).json({ message: "Invalid or expired code" });
+        }
+
+        user.verified = true;
+        user.verificationCode = null;
+        user.codeExpires = null;
+        await user.save();
+
+        // If password not set, frontend moves to password step
+        if (!user.passwordSet) {
+            return res.json({
+                needsPassword: true,
+                email: user.email,
+            });
+        }
+
+        // Fully authenticated
+        const token = jwt.sign(
+            { userId: user._id, email: user.email },
+            process.env.JWT_SECRET,
+            { expiresIn: "7d" }
+        );
+
+        res.json({ token });
+    } catch (err) {
+        console.error("verifyCode error:", err);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+/* =============================== SET PASSWORD =============================== */
+export const setPassword = async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        if (!password || password.length !== 6) {
+            return res.status(400).json({
+                message: "Password must be exactly 6 characters",
+            });
+        }
+
+        const user = await User.findOne({ email });
+
+        if (!user || !user.verified) {
+            return res.status(403).json({ message: "Unauthorized" });
+        }
+
+        user.password = await bcrypt.hash(password, 10);
+        user.passwordSet = true;
+        await user.save();
+
+        const token = jwt.sign(
+            { userId: user._id, email: user.email },
+            process.env.JWT_SECRET,
+            { expiresIn: "7d" }
+        );
+
+        res.json({ token });
+    } catch (err) {
+        console.error("setPassword error:", err);
+        res.status(500).json({ message: "Server error" });
+    }
+};
+
+/* =============================== LOGIN =============================== */
+export const login = async (req, res) => {
+    try {
+        const { email, password } = req.body;
+
+        if (!email || !password) {
+            return res.status(400).json({ message: "Email and password required" });
+        }
+
+        const user = await User.findOne({ email }).select("+password");
+
+        if (!user || !user.passwordSet) {
+            return res.status(401).json({ message: "Invalid credentials" });
+        }
+
+        const isMatch = await bcrypt.compare(password, user.password);
+
+        if (!isMatch) {
+            return res.status(401).json({ message: "Invalid credentials" });
         }
 
         const token = jwt.sign(
@@ -302,123 +478,15 @@ export const checkEmail = async (req, res) => {
             { expiresIn: "7d" }
         );
 
-        res.json({ exists: true, token });
-    } catch {
+        res.json({ token });
+    } catch (err) {
+        console.error("login error:", err);
         res.status(500).json({ message: "Server error" });
     }
 };
 
-/* =============================== START REGISTRATION =============================== */
-export const startRegistration = async (req, res) => {
-    const { email } = req.body;
 
-    const existing = await User.findOne({ email });
-    if (existing) {
-        return res.status(400).json({ message: "Email already registered" });
-    }
 
-    await User.create({ email, verified: false, passwordSet: false });
-    res.status(201).json({ message: "Registration started" });
-};
-
-/* =============================== SEND OTP =============================== */
-export const sendLoginCode = async (req, res) => {
-    const { email } = req.body;
-
-    // 🔧 FIX: auto-create user if not found
-    let user = await User.findOne({ email });
-    if (!user) {
-        user = await User.create({ email, verified: false, passwordSet: false });
-    }
-
-    if (user.verified && user.passwordSet) {
-        return res.status(400).json({ message: "Already verified" });
-    }
-
-    const code = crypto.randomInt(100000, 999999).toString();
-    user.verificationCode = code;
-    user.codeExpires = Date.now() + 10 * 60 * 1000; // 10 min
-    await user.save();
-
-    try {
-        await transporter.sendMail({
-            from: `"Temorah Login" <${process.env.EMAIL_USER}>`,
-            to: email,
-            subject: "Your verification code",
-            html: `<h2>${code}</h2><p>Expires in 10 minutes</p>`,
-        });
-    } catch (err) {
-        console.error("Failed to send email:", err);
-        return res.status(500).json({ message: "Failed to send email" });
-    }
-
-    res.json({ message: "Code sent" });
-};
-
-/* =============================== VERIFY OTP =============================== */
-export const verifyCode = async (req, res) => {
-    const { email, code } = req.body;
-
-    const user = await User.findOne({ email });
-
-    if (
-        !user ||
-        user.verificationCode !== code ||
-        Date.now() > user.codeExpires
-    ) {
-        return res.status(400).json({ message: "Invalid or expired code" });
-    }
-
-    user.verified = true;
-    user.verificationCode = null;
-    user.codeExpires = null;
-    await user.save();
-
-    // If password not set, let frontend go to password step
-    if (!user.passwordSet) {
-        return res.json({
-            needsPassword: true,
-            email: user.email,
-        });
-    }
-
-    const token = jwt.sign(
-        { userId: user._id, email: user.email },
-        process.env.JWT_SECRET,
-        { expiresIn: "7d" }
-    );
-
-    res.json({ token });
-};
-
-/* =============================== SET PASSWORD =============================== */
-export const setPassword = async (req, res) => {
-    const { email, password } = req.body;
-
-    if (!password || password.length !== 6) {
-        return res.status(400).json({
-            message: "Password must be exactly 6 characters",
-        });
-    }
-
-    const user = await User.findOne({ email });
-
-    if (!user || !user.verified) {
-        return res.status(403).json({ message: "Unauthorized" });
-    }
-
-    user.password = await bcrypt.hash(password, 10);
-    user.passwordSet = true;
-    await user.save();
-
-    const token = jwt.sign(
-        { userId: user._id, email: user.email },
-        process.env.JWT_SECRET,
-        { expiresIn: "7d" }
-    );
-
-    res.json({ token });
-};
 
 
 

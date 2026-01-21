@@ -29,7 +29,8 @@ import {
     startRegistration,
     sendLoginCode,
     verifyCode,
-    setPassword
+    setPassword,
+    login
 } from "../controllers/authController.js";
 
 const router = express.Router();
@@ -52,6 +53,9 @@ router.post("/verify-code", verifyCode);
 
 // 5️⃣ Set password for new user after verification
 router.post("/set-password", setPassword);
+
+router.post("/login", login);
+
 
 export default router;
 
